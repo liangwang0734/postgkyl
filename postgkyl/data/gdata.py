@@ -112,9 +112,9 @@ class GData(object):
 
   #-----------------------------------------------------------------
   #-- File Loading -------------------------------------------------
-  def _createOffsetCountBp(self, bpVar, zs, comp, grid=None):
-    num_dims = len(bpVar.dims)
-    count = np.array(bpVar.dims)
+  def _createOffsetCountBp(self, dims, zs, comp, grid=None):
+    num_dims = len(dims)
+    count = np.array(dims)
     offset = np.zeros(num_dims, np.int)
     cnt = 0
     for d, z in enumerate(zs):
@@ -170,9 +170,9 @@ class GData(object):
         return
       #end
     elif extension == 'bp':
-      import adios
-      fh = adios.file(self.file_name)
-      if not self._var_name in fh.vars:
+      import adios2
+      fh = adios2.open(self.file_name, "r")
+      if not self._var_name in fh.available_variables():
         # Not a Gkyl 'frame' data; trying to load as a sequence
         fh.close()
         self._loadSequence()  
@@ -180,58 +180,57 @@ class GData(object):
       #end
       # Get the atributes
       self.attrsList = { }
-      for k in fh.attrs.keys():
+      for k in fh.available_attributes().keys():
         self.attrsList[k] = 0
       #end
       # Postgkyl conventions require the attributes to be
       # narrays even for 1D data
-      lower = np.atleast_1d(adios.attr(fh, 'lowerBounds').value)
-      upper = np.atleast_1d(adios.attr(fh, 'upperBounds').value)
-      cells = np.atleast_1d(adios.attr(fh, 'numCells').value)
-      if 'changeset' in fh.attrs.keys():
-        self.meta['changeset'] = adios.attr(fh, 'changeset').value.decode('UTF-8')
+      lower = np.atleast_1d(fh.read_attribute('lowerBounds'))
+      upper = np.atleast_1d(fh.read_attribute('upperBounds'))
+      cells = np.atleast_1d(fh.read_attribute('numCells'))
+      if 'changeset' in fh.available_attributes().keys():
+        self.meta['changeset'] = fh.read_attribute_string('changeset')[0]
       #end
-      if 'builddate' in fh.attrs.keys():
-        self.meta['builddate'] = adios.attr(fh, 'builddate').value.decode('UTF-8')
+      if 'builddate' in fh.available_attributes().keys():
+        self.meta['builddate'] = fh.read_attribute_string('builddate')[0]
       #end
-      if 'polyOrder' in fh.attrs.keys():
-        self.meta['polyOrder'] = adios.attr(fh, 'polyOrder').value
+      if 'polyOrder' in fh.available_attributes().keys():
+        self.meta['polyOrder'] = fh.read_attribute('polyOrder')
         self.meta['isModal'] = True
       #end
-      if 'basisType' in fh.attrs.keys():
-        self.meta['basisType'] = adios.attr(fh, 'basisType').value.decode('UTF-8')
+      if 'basisType' in fh.available_attributes().keys():
+        self.meta['basisType'] = fh.read_attribute_string('basisType')[0]
         self.meta['isModal'] = True
       #end
-      if 'charge' in fh.attrs.keys():
-        self.meta['charge'] = adios.attr(fh, 'charge').value
+      if 'charge' in fh.available_attributes().keys():
+        self.meta['charge'] = fh.read_attribute('charge')
       #end
-      if 'mass' in fh.attrs.keys():
-        self.meta['mass'] = adios.attr(fh, 'mass').value
+      if 'mass' in fh.available_attributes().keys():
+        self.meta['mass'] = fh.read_attribute('mass')
       #end
-      if 'time' in fh.vars:
-        self.meta['time'] = adios.var(fh, 'time').read()
+      if 'time' in fh.available_variables():
+        self.meta['time'] = fh.read('time')
       #end
-      if 'frame' in fh.vars:
-        self.meta['frame'] = adios.var(fh, 'frame').read()
+      if 'frame' in fh.available_variables():
+        self.meta['frame'] = fh.read('frame')
       #end
 
       # Check for mapped grid ...
-      if 'type' in fh.attrs.keys() and self._comp_grid is False:
-        self._gridType = adios.attr(fh, 'type').value.decode('UTF-8')
+      if 'type' in fh.available_attributes() and self._comp_grid is False:
+        self._gridType = fh.read_attribute_string('type')[0]
       #end
       # .. load nodal grid if provided ...
       if self._gridType == 'uniform':
         pass # nothing to do for uniform grids
       elif self._gridType == 'mapped':
-        if 'grid' in fh.attrs.keys():
-          gridNm = self._file_dir + '/' +adios.attr(fh, 'grid').value.decode('UTF-8')
+        if 'grid' in fh.available_attributes().keys():
+          gridNm = self._file_dir + '/' +fh.read_attributei_string('grid')
         else:
           gridNm = self._file_dir + '/grid'  
         #end
-        with adios.file(gridNm) as gridFh:
-          gridVar = adios.var(gridFh, self._var_name)
-          offset, count = self._createOffsetCountBp(gridVar, axes, None)
-          tmp = gridVar.read(offset=offset, count=count)
+        with adios2.open(gridNm, 'r') as gridFh:
+          offset, count = self._createOffsetCountBp(gridVar.dims, axes, None)
+          tmp = gridFh.read(self._var_name, start=offset, count=count)
           grid = [tmp[..., d].transpose()
                   #for d in range(len(cells))]
                   for d in range(tmp.shape[-1])]
@@ -245,13 +244,12 @@ class GData(object):
 
       # Load data
       num_dims = len(cells)
-      var = adios.var(fh, self._var_name)
       grid = [np.linspace(lower[d],
                           upper[d],
                           cells[d]+1)
               for d in range(num_dims)]
-      offset, count = self._createOffsetCountBp(var, axes, comp, grid)
-      self._values = var.read(offset=offset, count=count, nsteps=1)
+      offset, count = self._createOffsetCountBp(cells, axes, comp, grid)
+      self._values = fh.read(self._var_name, start=offset, count=count)
 
       # Adjust boundaries for 'offset' and 'count'
       dz = (upper - lower) / cells
@@ -459,8 +457,8 @@ class GData(object):
   #end
 
   def getInputFile(self):
-    fh = adios.file(self.file_name)
-    inputFile = adios.attr(fh, 'inputfile').value.decode('UTF-8')
+    fh = adios2.open(self.file_name, 'r')
+    inputFile = fh.read_attribute_string('inputfile')[0]
     fh.close()
     return inputFile
   #end
