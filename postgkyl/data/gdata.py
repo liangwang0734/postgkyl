@@ -115,7 +115,7 @@ class GData(object):
   def _createOffsetCountBp(self, dims, zs, comp, grid=None):
     num_dims = len(dims)
     count = np.array(dims)
-    offset = np.zeros(num_dims, np.int)
+    offset = np.zeros(num_dims, int)
     cnt = 0
     for d, z in enumerate(zs):
       if d < num_dims-1 and z is not None:  # Last dim stores comp
@@ -467,7 +467,7 @@ class GData(object):
   def getNumCells(self):
     if self._values is not None:
       num_dims = len(self._values.shape)-1
-      cells = np.zeros(num_dims, np.int32)
+      cells = np.zeros(num_dims, int)
       for d in range(num_dims):
         cells[d] = int(self._values.shape[d])
       #end
@@ -600,7 +600,7 @@ class GData(object):
       #end
       if self.meta['polyOrder'] and self.meta['basisType']:
         output += '\n├─ DG info:\n'
-        output += '│  ├─ Polynomial Order: {:d}\n'.format(self.meta['polyOrder'])
+        output += '│  ├─ Polynomial Order: {:d}\n'.format(self.meta['polyOrder'][0])
         if self.meta['isModal']:
           output += '│  └─ Basis Type: {:s} (modal)'.format(self.meta['basisType'])
         else:
@@ -752,7 +752,7 @@ class GData(object):
       fh = open(out_name, 'w')
       for i in range(numRows):
         idx = i
-        idxs = np.zeros(num_dims, np.int)
+        idxs = np.zeros(num_dims, int)
         for d in range(num_dims):
           idxs[d] = int(idx // basis[d])
           idx = idx % basis[d]
